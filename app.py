@@ -157,7 +157,7 @@ const CFG = {
   player:  { speed: 5, bulletSpeed: 12, fireRate: 280, w: 36, h: 22 },
   enemies: {
     rows: 4, cols: 10,
-    startY: 90,
+    startY: 105,
     xPad: 60,
     xGap: 70, yGap: 48,
     baseSpeed: 0.6,
@@ -815,6 +815,21 @@ function drawHUD() {
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(0, 56); ctx.lineTo(CFG.W, 56);
+  ctx.stroke();
+
+  // Controls strip — always visible below divider
+  const hints = ['←/A MOVE', '→/D MOVE', 'SPC FIRE', 'P PAUSE', 'R RESTART'];
+  const hintColors = ['#ffffff44', '#ffffff44', '#ffffff44', '#ffff0077', '#ffffff44'];
+  const slotW = CFG.W / hints.length;
+  for (let i = 0; i < hints.length; i++) {
+    drawText(hints[i], slotW * i + slotW / 2, 68, { size: 10, color: hintColors[i], align: 'center' });
+  }
+
+  // Second divider under hints
+  ctx.strokeStyle = '#ffffff11';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, 78); ctx.lineTo(CFG.W, 78);
   ctx.stroke();
 }
 
