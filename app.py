@@ -168,7 +168,7 @@ const CFG = {
     w: 32, h: 22,
   },
   ufo: { speed: 1.8, spawnChance: 0.00018, w: 52, h: 18 },
-  barriers: { count: 4, health: 18, w: 64, h: 36, y: 500 },
+  barriers: { count: 4, w: 64, h: 48, y: 500 },
   lives: 3,
   scoring: { byRow: [30, 20, 20, 10], ufoPool: [50,100,150,200,300], waveBonus: 500 },
   particles: { count: 10, life: 40, speed: 2.5 },
@@ -243,7 +243,7 @@ function makeBarrier(x) {
     for (let c = 0; c < cols; c++) {
       // carve top-center notch (simulate classic barrier shape)
       const notch = (r < 2 && c >= 3 && c <= 4);
-      cells.push({ alive: !notch, hp: 3 });
+      cells.push({ alive: !notch });
     }
   }
   return { x, y: CFG.barriers.y, w: bw, h: bh, cols, rows, cells };
@@ -360,7 +360,7 @@ function overlaps(a, b) {
 
 // Barrier cell hit test
 function hitBarrier(bullet) {
-  // Test bullet tip and tail so fast bullets don't tunnel through thin cells
+  // Test bullet tip, center, and tail to prevent tunneling through thin cells
   const testPoints = [
     { x: bullet.x, y: bullet.y - bullet.h / 2 },
     { x: bullet.x, y: bullet.y },
@@ -369,15 +369,14 @@ function hitBarrier(bullet) {
   for (const bar of barriers) {
     const cw = bar.w / bar.cols, ch = bar.h / bar.rows;
     for (const pt of testPoints) {
-      const bx = pt.x - bar.x + bar.w / 2;
+      const bx = pt.x - bar.x;   // bar.x is top-left corner
       const by = pt.y - bar.y;
       if (bx < 0 || bx >= bar.w || by < 0 || by >= bar.h) continue;
       const col = Math.min(Math.floor(bx / cw), bar.cols - 1);
       const row = Math.min(Math.floor(by / ch), bar.rows - 1);
       const idx = row * bar.cols + col;
       if (bar.cells[idx] && bar.cells[idx].alive) {
-        bar.cells[idx].hp--;
-        if (bar.cells[idx].hp <= 0) bar.cells[idx].alive = false;
+        bar.cells[idx].alive = false;  // one hit = one cell gone, instant feedback
         return true;
       }
     }
@@ -763,13 +762,8 @@ function drawBarrier(bar) {
     for (let c = 0; c < bar.cols; c++) {
       const cell = bar.cells[r * bar.cols + c];
       if (!cell.alive) continue;
-      const ratio = cell.hp / 3;
-      let color;
-      if (ratio > 0.66) color = '#00ff88';
-      else if (ratio > 0.33) color = '#ffff00';
-      else color = '#ff4400';
-      ctx.fillStyle = color;
-      ctx.shadowColor = color;
+      ctx.fillStyle = '#00ff88';
+      ctx.shadowColor = '#00ff88';
       ctx.shadowBlur = 4;
       ctx.fillRect(
         Math.round(bar.x + c * cw) + 1,
