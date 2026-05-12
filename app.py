@@ -182,6 +182,7 @@ let player, enemies, playerBullets, enemyBullets, barriers, particles;
 let ufo = null;
 let enemyDir = 1, enemyMoveTimer = 0, enemyMoveInterval = 800;
 let enemyAnimFrame = 0, enemyAnimTimer = 0;
+let enemyFireTimer = 0;
 let lastTime = 0, lastShot = 0;
 let shakeTimer = 0;
 let flashEl, canvas, ctx;
@@ -225,7 +226,7 @@ function makeEnemy(row, col) {
     y: CFG.enemies.startY + row * CFG.enemies.yGap,
     w: CFG.enemies.w, h: CFG.enemies.h,
     alive: true,
-    points: CFG.scoring.byRow[row],
+    points: CFG.scoring.byRow[Math.min(row, CFG.scoring.byRow.length - 1)],
   };
 }
 
@@ -295,6 +296,7 @@ function initWave(waveNum) {
   enemyDir = 1;
   enemyMoveInterval = Math.max(200, 800 - (waveNum - 1) * 60);
   enemyMoveTimer = 0;
+  enemyFireTimer = 0;
   ufo = null;
   playerBullets = [];
   enemyBullets  = [];
@@ -303,6 +305,7 @@ function initWave(waveNum) {
 
 function initGame() {
   score = 0; lives = CFG.lives; wave = 1;
+  shakeTimer = 0;
   player = makePlayer();
   barriers = [];
   const gap = (CFG.W - CFG.barriers.count * CFG.barriers.w) / (CFG.barriers.count + 1);
@@ -323,6 +326,7 @@ document.addEventListener('keydown', e => {
   if (STATE === 'START' && e.code === 'Space') initGame();
   if ((STATE === 'GAMEOVER' || STATE === 'WIN') && e.code === 'KeyR') {
     STATE = 'START';
+    shakeTimer = 0;
   }
   if (STATE === 'PLAYING' && e.code === 'KeyP') STATE = 'PAUSED';
   else if (STATE === 'PAUSED' && e.code === 'KeyP') {
@@ -356,18 +360,26 @@ function overlaps(a, b) {
 
 // Barrier cell hit test
 function hitBarrier(bullet) {
+  // Test bullet tip and tail so fast bullets don't tunnel through thin cells
+  const testPoints = [
+    { x: bullet.x, y: bullet.y - bullet.h / 2 },
+    { x: bullet.x, y: bullet.y },
+    { x: bullet.x, y: bullet.y + bullet.h / 2 },
+  ];
   for (const bar of barriers) {
     const cw = bar.w / bar.cols, ch = bar.h / bar.rows;
-    const bx = bullet.x - bar.x + bar.w / 2;
-    const by = bullet.y - bar.y + bar.h / 2;
-    if (bx < 0 || bx > bar.w || by < 0 || by > bar.h) continue;
-    const col = Math.floor(bx / cw);
-    const row = Math.floor(by / ch);
-    const idx = row * bar.cols + col;
-    if (idx >= 0 && idx < bar.cells.length && bar.cells[idx].alive) {
-      bar.cells[idx].hp--;
-      if (bar.cells[idx].hp <= 0) bar.cells[idx].alive = false;
-      return true;
+    for (const pt of testPoints) {
+      const bx = pt.x - bar.x + bar.w / 2;
+      const by = pt.y - bar.y;
+      if (bx < 0 || bx >= bar.w || by < 0 || by >= bar.h) continue;
+      const col = Math.min(Math.floor(bx / cw), bar.cols - 1);
+      const row = Math.min(Math.floor(by / ch), bar.rows - 1);
+      const idx = row * bar.cols + col;
+      if (bar.cells[idx] && bar.cells[idx].alive) {
+        bar.cells[idx].hp--;
+        if (bar.cells[idx].hp <= 0) bar.cells[idx].alive = false;
+        return true;
+      }
     }
   }
   return false;
@@ -447,12 +459,19 @@ function update(dt) {
     } else {
       for (const e of aliveEnemies) e.x += step * enemyDir;
     }
-    // Enemy random fire
-    if (aliveEnemies.length > 0) {
-      const shooter = aliveEnemies[Math.floor(Math.random() * aliveEnemies.length)];
-      if (Math.random() < 0.18 + wave * 0.03) {
-        enemyBullets.push(makeBullet(shooter.x, shooter.y + shooter.h / 2, CFG.enemies.bulletSpeed + wave * 0.3, 'enemy'));
-      }
+  }
+
+  // Enemy fire — independent timer, not tied to movement cadence
+  enemyFireTimer += dt;
+  const fireInterval = Math.max(400, 1400 - wave * 80);
+  if (enemyFireTimer >= fireInterval && aliveEnemies.length > 0) {
+    enemyFireTimer = 0;
+    // Fire from 1-3 random enemies per interval depending on wave
+    const salvo = Math.min(3, 1 + Math.floor(wave / 3));
+    const shuffled = aliveEnemies.slice().sort(() => Math.random() - 0.5);
+    for (let s = 0; s < salvo && s < shuffled.length; s++) {
+      const shooter = shuffled[s];
+      enemyBullets.push(makeBullet(shooter.x, shooter.y + shooter.h / 2, CFG.enemies.bulletSpeed + wave * 0.35, 'enemy'));
     }
   }
 
@@ -952,8 +971,8 @@ function drawPause() {
 function render() {
   ctx.save();
 
-  // Screen shake
-  if (shakeTimer > 0) {
+  // Screen shake — only during active play
+  if (shakeTimer > 0 && (STATE === 'PLAYING' || STATE === 'GAMEOVER')) {
     const mag = Math.min(shakeTimer / 100, 4);
     ctx.translate(
       (Math.random() - 0.5) * mag * 2,
@@ -1021,6 +1040,7 @@ function loop(ts) {
   // Handle R key globally
   if ((STATE === 'GAMEOVER' || STATE === 'WIN') && keys['KeyR']) {
     STATE = 'START';
+    shakeTimer = 0;
     keys['KeyR'] = false;
   }
 
